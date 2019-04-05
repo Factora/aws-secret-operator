@@ -1,14 +1,16 @@
 package awssecret
 
 import (
+	"encoding/json"
+	"fmt"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/secretsmanager"
-	"encoding/json"
 	"github.com/mumoshu/aws-secret-operator/pkg/apis/mumoshu/v1alpha1"
+	"strconv"
 )
 
 type Context struct {
-	s *session.Session
+	s  *session.Session
 	sm *secretsmanager.SecretsManager
 }
 
@@ -28,7 +30,7 @@ func (c *Context) String(secretId string, versionId string) (*string, error) {
 	}
 
 	getSecInput := &secretsmanager.GetSecretValueInput{
-		SecretId: &secretId,
+		SecretId:  &secretId,
 		VersionId: &versionId,
 	}
 
@@ -45,9 +47,28 @@ func (c *Context) SecretsManagerSecretToKubernetesStringData(ref v1alpha1.Secret
 	if err != nil {
 		return nil, err
 	}
-	m := map[string]string{}
+
+	// Unmarshal into map[string]interface{}
+	m := make(map[string]interface{})
 	if err := json.Unmarshal([]byte(*sec), &m); err != nil {
 		return nil, err
 	}
-	return m, nil
+
+	// Convert values to string
+	kubeSecret := make(map[string]string)
+
+	for key, val := range m {
+		var stringVal string
+
+		switch typedVal := val.(type) {
+		case float64:
+			stringVal = strconv.FormatFloat(typedVal, 'f', -1, 64)
+		default:
+			stringVal, _ = val.(string)
+		}
+
+		kubeSecret[key] = stringVal
+	}
+
+	return kubeSecret, nil
 }
